@@ -157,7 +157,6 @@ def assign_feature_values_from_folder(
     output_dir = _ensure_output_dir(output_dir)
     csv_path = output_dir / f"{class_name}_feature_values.csv"
 
-    # We'll need to maybe infer feature names from the FIRST image
     iterator = image_files
     if tqdm is not None:
         iterator = tqdm(image_files, desc=f"{class_name}", unit="img")
@@ -181,14 +180,12 @@ def assign_feature_values_from_folder(
             if isinstance(maybe_json, dict):
                 parsed = {"features": maybe_json}
 
-        # If we STILL have no feature names, infer from this first LLM output
         if not feature_names:
             feature_names = _infer_feature_names_from_llm(parsed)
 
-        # Now we know all columns
         all_columns = ["Image", "Class"] + feature_names + ["raw_llm_output"]
 
-        # If CSV doesn't exist yet, create with header now (we now know feature names!)
+        # If CSV doesn't exist yet, create with header
         if not csv_path.exists():
             header_df = pd.DataFrame(columns=all_columns)
             header_df.to_csv(csv_path, index=False, encoding="utf-8")
