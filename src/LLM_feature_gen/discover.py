@@ -1,4 +1,5 @@
 # src/LLM_feature_gen/discover.py
+import random
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 from PIL import Image
@@ -8,9 +9,10 @@ import json
 from datetime import datetime
 
 from .utils.image import image_to_base64
+from dotenv import load_dotenv
+from .utils.video import extract_key_frames
 from .providers.openai_provider import OpenAIProvider
 from .prompts import image_discovery_prompt
-from dotenv import load_dotenv
 
 # Load environment variables automatically
 load_dotenv()
@@ -26,6 +28,7 @@ def discover_features_from_images(
     as_set: bool = True,                     # <- default TRUE for discovery
     output_dir: str | Path = "outputs",
     output_filename: Optional[str] = None,
+    max_files_for_discovery: int = 10,
 ) -> Dict[str, Any]:
     """
     High-level helper: takes a list of image file paths OR a folder path,
@@ -48,7 +51,7 @@ def discover_features_from_images(
             image_paths = [
                 str(p)
                 for p in folder_path.glob("*")
-                if p.suffix.lower() in [".jpg", ".jpeg", ".png"]
+                if p.suffix.lower() in [".jpg", ".jpeg", ".png", ".mp4", ".mov", ".avi", ".mkv"]
             ]
         else:
             image_paths = [str(folder_path)]
@@ -58,12 +61,25 @@ def discover_features_from_images(
     if not image_paths:
         raise ValueError("No image files found to process.")
 
+    if len(image_paths) > max_files_for_discovery:
+        image_paths = random.sample(image_paths, max_files_for_discovery)
+
     # 3) to base64
     b64_list: List[str] = []
     for path in image_paths:
         try:
-            img = Image.open(path).convert("RGB")
-            b64_list.append(image_to_base64(np.array(img)))
+            p = Path(path)
+            ext = p.suffix.lower()
+
+            if ext in [".mp4", ".mov", ".avi", ".mkv"]:
+                frames = extract_key_frames(str(p), frame_limit=3)
+                if frames:
+                    b64_list.extend(frames)
+            else:
+                img = Image.open(path).convert("RGB")
+                img.thumbnail((1024, 1024))
+                b64_list.append(image_to_base64(np.array(img)))
+
         except Exception as e:
             print(f"Could not load {path}: {e}")
 

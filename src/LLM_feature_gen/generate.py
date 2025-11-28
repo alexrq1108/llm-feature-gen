@@ -1,6 +1,6 @@
 # src/LLM_feature_gen/generate.py
 from __future__ import annotations
-
+from .utils.video import extract_key_frames, transcribe_video
 import os
 import json
 from pathlib import Path
@@ -150,7 +150,7 @@ def assign_feature_values_from_folder(
 
     image_files = [
         f for f in os.listdir(class_folder)
-        if f.lower().endswith((".jpg", ".jpeg", ".png"))
+        if f.lower().endswith((".jpg", ".jpeg", ".png", ".mp4", ".mov", ".avi", ".mkv"))
     ]
     image_files.sort()
 
@@ -164,15 +164,42 @@ def assign_feature_values_from_folder(
     first_row_written = csv_path.exists()
 
     for idx, filename in enumerate(iterator):
-        img_path = class_folder / filename
-        img = Image.open(img_path).convert("RGB")
-        img_b64 = image_to_base64(np.array(img))
+        file_path = class_folder / filename
+        ext = file_path.suffix.lower()
 
-        llm_resp = provider.image_features(
-            image_base64_list=[img_b64],
-            prompt=full_prompt,
-        )
-        parsed = llm_resp
+        b64_list = []
+        transcript_context = None
+
+        try:
+            if ext in [".mp4", ".mov", ".avi", ".mkv"]:
+                raw_transcript = transcribe_video(str(file_path))
+                if raw_transcript and len(raw_transcript) > 10:
+                    transcript_context = raw_transcript
+                else:
+                    transcript_context = "No distinct speech detected."
+
+                b64_list = extract_key_frames(str(file_path), frame_limit=6)
+
+                if not b64_list:
+                    print(f"Skipping video {filename}: No frames extracted.")
+                    continue
+
+            else:
+                img = Image.open(file_path).convert("RGB")
+                b64_list = [image_to_base64(np.array(img))]
+                transcript_context = None
+
+            llm_resp = provider.image_features(
+                image_base64_list=b64_list,
+                prompt=full_prompt,
+                extra_context=transcript_context
+            )
+
+            parsed = llm_resp[0] if isinstance(llm_resp, list) and llm_resp else {}
+
+        except Exception as e:
+            print(f"Error processing {filename}: {e}")
+            continue
 
         # sometimes model returns {"features": "<json str>"}
         if isinstance(parsed, dict) and "features" in parsed and isinstance(parsed["features"], str):
