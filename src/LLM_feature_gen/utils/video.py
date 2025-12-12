@@ -74,7 +74,7 @@ def extract_key_frames(video_path: str, frame_limit: int = 6, sharpness_threshol
     if not candidates:
         return []
 
-    # Step 2: Intelligent Selection
+    # Intelligent Selection
     if len(candidates) <= frame_limit:
         # Not enough candidates? Take them all.
         final_candidates = candidates
@@ -94,13 +94,13 @@ def extract_key_frames(video_path: str, frame_limit: int = 6, sharpness_threshol
             if not cluster_indices:
                 continue
 
-            # Pick the SHARPEST frame from this cluster
+            # Pick the sharpest frame from this cluster
             best_in_cluster = max(cluster_indices, key=lambda idx: candidates[idx]["sharpness"])
             selected_indices.append(best_in_cluster)
 
         final_candidates = [candidates[i] for i in selected_indices]
 
-    # Step 3: Sort by time and prepare output
+    # Sort by time and prepare output
     final_candidates.sort(key=lambda x: x["timestamp"])
 
     b64_list = []
