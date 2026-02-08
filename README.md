@@ -57,6 +57,42 @@ Clone or download the repository, then install in editable mode:
 pip install -e .
 ```
 
+## 🧪 Running Tests
+
+The project uses pytest. You don’t need external services (no network calls are made during tests), and heavy video tooling is stubbed out.
+
+Quick start from the repository root (Windows PowerShell shown, works similarly on macOS/Linux):
+
+```powershell
+# 1) (Recommended) Create and activate a virtual environment
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1   # On macOS/Linux: source .venv/bin/activate
+
+# 2) Install the package in editable mode
+pip install -e .
+
+# 3) Install test runner
+pip install -U pytest
+
+# 4) Run the test suite
+python -m pytest -q
+```
+
+Useful commands:
+- Run a single test file:
+  ```powershell
+  python -m pytest -q src\tests\test_discovery.py
+  ```
+- Run tests with verbose output:
+  ```powershell
+  python -m pytest -vv
+  ```
+
+Notes:
+- Tests create and use temporary directories; they do not modify your repository files.
+- Video-related utilities are monkeypatched/stubbed in tests, so `ffmpeg` is not required to run the suite.
+- Environment variables for Azure OpenAI are not required for tests because a fake provider is used.
+
 ## 🔑 Environment Setup for OpenAI API
 
 Create a .env file in the project root
