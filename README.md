@@ -62,6 +62,56 @@ Clone or download the repository, then install in editable mode:
 pip install -e .
 ```
 
+## 🏠 Local Provider Setup (Ollama, vLLM, LM Studio)
+
+The library supports local execution using any OpenAI-compatible server (like **Ollama**, **vLLM**, or **LM Studio**) and local audio transcription via **Faster-Whisper**.
+
+### 1. Requirements
+If you wish to use local audio transcription, install the optional dependency:
+```bash
+pip install faster-whisper
+```
+
+### 2. Environment Variables
+Add these to your `.env` file to configure the local behavior:
+
+```bash
+# Provider endpoint (e.g., Ollama)
+LOCAL_OPENAI_BASE_URL="http://localhost:11434/v1"
+LOCAL_OPENAI_API_KEY="ollama"  # Usually ignored by local servers
+
+# Model names
+LOCAL_MODEL_TEXT="llama3.1"
+LOCAL_MODEL_VISION="llama3.2-vision"
+
+# Local Whisper settings
+LOCAL_WHISPER_MODEL_SIZE="base" # tiny, base, small, medium, large-v3
+LOCAL_WHISPER_DEVICE="auto"     # cuda, cpu, or auto
+```
+
+### 3. Usage Example: Local Video Discovery
+To use the local provider, simply initialize `LocalProvider` and pass it to the discovery functions.
+
+> **💡 Performance Tip:** Smaller local vision models (like Llama 3.2 Vision) perform best when processing fewer frames at once. Use `max_total_frames_payload` to prevent context saturation.
+
+```python
+from LLM_feature_gen.providers.local_provider import LocalProvider
+from LLM_feature_gen.discover import discover_features_from_videos
+
+# 1. Initialize the local provider
+local_provider = LocalProvider()
+
+# 2. Run discovery on a video folder
+result = discover_features_from_videos(
+    videos_or_folder="my_videos",
+    provider=local_provider,
+    num_frames=3,                   # Frames per video
+    max_total_frames_payload=6      # Limit total frames for local LLM stability
+)
+
+print(result)
+```
+
 ## 🔑 Environment Setup for OpenAI API
 
 Create a .env file in the project root

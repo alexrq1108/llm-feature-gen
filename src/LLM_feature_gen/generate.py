@@ -197,7 +197,8 @@ def assign_feature_values_from_folder(
     if not class_folder.exists():
         raise FileNotFoundError(f"Class folder not found: {class_folder}")
 
-    feature_names = _extract_feature_names(discovered_features)
+    raw_names = _extract_feature_names(discovered_features)
+    feature_names = list(dict.fromkeys(raw_names))
 
     video_exts = {".mp4", ".mov", ".avi", ".mkv"}
     image_exts = {".jpg", ".jpeg", ".png"}
@@ -295,7 +296,7 @@ def assign_feature_values_from_folder(
 
         for feat in feature_names:
             value = inner.get(feat, "not given by LLM")
-            row[feat] = f"{feat} = {value}"
+            row[feat] = value
 
         df = pd.DataFrame([row], columns=all_columns)
         df.to_csv(csv_path, mode="a", header=False, index=False)
@@ -365,7 +366,7 @@ def generate_features_from_images(*args, **kwargs) -> Dict[str, str]:
 
 def generate_features_from_videos(*args, **kwargs) -> Dict[str, str]:
     if "discovered_features_path" not in kwargs:
-        kwargs["discovered_features_path"] = "outputs/discovered_image_features.json"
+        kwargs["discovered_features_path"] = "outputs/discovered_videos_features.json"
 
     kwargs.setdefault("use_audio", True)
     return generate_features(*args, **kwargs)

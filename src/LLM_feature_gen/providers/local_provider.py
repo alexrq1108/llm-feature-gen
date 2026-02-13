@@ -5,12 +5,12 @@ import os
 import json
 import time
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from dotenv import load_dotenv
 
 # OpenAI SDK (used as client for Local endpoints)
 import openai
-from openai import OpenAI, APIConnectionError, BadRequestError
+from openai import OpenAI, BadRequestError
 
 # Optional: Local Whisper
 try:
@@ -92,6 +92,8 @@ class LocalProvider:
         self.client: OpenAI = OpenAI(
             base_url=self.base_url,
             api_key=self.api_key,
+            # Increased timeout for local batch processing (video frames)
+            timeout=300.0,
         )
 
         # -------------------------------------------------
@@ -113,24 +115,43 @@ class LocalProvider:
     # -----------------------
     # Low-level helper
     # -----------------------
-    def _extract_json(self, text: str) -> Optional[Dict[str, Any]]:
+    def _extract_json(self, text: str) -> Optional[Union[Dict[str, Any], List[Any]]]:
         """
         Attempts to extract valid JSON from a conversational response.
         Handles markdown code blocks and extra conversational text.
+        Supports both Dict {...} and List [...] structures.
         """
         text = text.strip()
 
-        # Try finding a markdown code block
-        code_block = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+        # 1. Try direct load (best case)
+        try:
+            return json.loads(text)
+        except:
+            pass
+
+        # 2. Try finding a markdown code block (capture {..} or [..])
+        # Modified regex to support both object and array return types
+        code_block = re.search(r"```(?:json)?\s*([\{\[].*?[\}\]])\s*```", text, re.DOTALL)
         if code_block:
             try:
                 return json.loads(code_block.group(1))
             except:
                 pass
 
-        # Try finding outer braces
-        start, end = text.find("{"), text.rfind("}")
-        if start != -1 and end != -1 and end > start:
+        # 3. Try finding outer braces or brackets (fallback)
+        start_brace, end_brace = text.find("{"), text.rfind("}")
+        start_bracket, end_bracket = text.find("["), text.rfind("]")
+
+        # Determine which structure starts first
+        candidates = []
+        if start_brace != -1 and end_brace > start_brace:
+            candidates.append((start_brace, end_brace))
+        if start_bracket != -1 and end_bracket > start_bracket:
+            candidates.append((start_bracket, end_bracket))
+
+        if candidates:
+            # Pick the candidate that starts earliest in the text
+            start, end = min(candidates, key=lambda x: x[0])
             try:
                 return json.loads(text[start: end + 1])
             except:
@@ -180,10 +201,15 @@ class LocalProvider:
                 except Exception:
                     extracted = self._extract_json(text)
                     if extracted:
+                        # Wrap lists in a dict if expected interface requires it,
+                        # but returning raw structure is usually safer here.
+                        if isinstance(extracted, list):
+                            return {"features": extracted}
                         return extracted
                     return {"features": text}
 
             except BadRequestError as e:
+                # Fallback if model doesn't support json_mode
                 if json_mode and "json_object" in str(e):
                     json_mode = False
                     continue
@@ -232,23 +258,22 @@ class LocalProvider:
                 "Respond in strict JSON with keys as feature names and values as concise strings."
             )
 
-        # We generally want JSON mode for feature extraction tasks locally
         use_json_mode = True
 
         def build_content(txt_prompt, b64_imgs, context_txt=None):
-            content = [{"type": "text", "text": txt_prompt}]
-
-            if context_txt:
-                content.append({
-                    "type": "text",
-                    "text": f"\n\nADDITIONAL CONTEXT (AUDIO TRANSCRIPT):\n{context_txt}\n\nAnalyze the visual frames below taking the transcript into account:"
-                })
-
+            # Put images first for better compatibility with VLM models
+            content = []
             for img_b64 in b64_imgs:
                 content.append({
                     "type": "image_url",
                     "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}
                 })
+
+            final_text = txt_prompt
+            if context_txt:
+                final_text += f"\n\nADDITIONAL CONTEXT (AUDIO TRANSCRIPT):\n{context_txt}\n\nAnalyze the visual frames below taking the transcript into account:"
+
+            content.append({"type": "text", "text": final_text})
             return content
 
         # ----------------------------

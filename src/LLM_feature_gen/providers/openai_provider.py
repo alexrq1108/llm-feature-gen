@@ -212,19 +212,19 @@ class OpenAIProvider:
             )
 
         def build_content(txt_prompt, b64_imgs, context_txt=None):
-            content = [{"type": "text", "text": txt_prompt}]
-
-            if context_txt:
-                content.append({
-                    "type": "text",
-                    "text": f"\n\nADDITIONAL CONTEXT (AUDIO TRANSCRIPT):\n{context_txt}\n\nAnalyze the visual frames below taking the transcript into account:"
-                })
-
+            # Put images first for better compatibility with VLM models
+            content = []
             for img_b64 in b64_imgs:
                 content.append({
                     "type": "image_url",
                     "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}
                 })
+
+            final_text = txt_prompt
+            if context_txt:
+                final_text += f"\n\nADDITIONAL CONTEXT (AUDIO TRANSCRIPT):\n{context_txt}\n\nAnalyze the visual frames below taking the transcript into account:"
+
+            content.append({"type": "text", "text": final_text})
             return content
 
         # ----------------------------

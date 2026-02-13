@@ -11,7 +11,7 @@ from datetime import datetime
 from .utils.image import image_to_base64
 from .utils.text import extract_text_from_file
 from dotenv import load_dotenv
-from .utils.video import extract_key_frames, extract_audio_track
+from .utils.video import extract_key_frames, extract_audio_track, downsample_batch
 from .providers.openai_provider import OpenAIProvider
 from .prompts import image_discovery_prompt, text_discovery_prompt
 
@@ -116,6 +116,7 @@ def discover_features_from_videos(
         output_filename: Optional[str] = None,
         use_audio: bool = True,
         max_videos_to_sample: int = 5,
+        max_total_frames_payload: int = 15
 ) -> Dict[str, Any]:
     """
     High-level helper: takes a video file path, list of paths OR a folder path,
@@ -206,6 +207,9 @@ def discover_features_from_videos(
 
     if not all_frames_b64:
         raise ValueError("No frames extracted from input videos.")
+
+    if len(all_frames_b64) > max_total_frames_payload:
+        all_frames_b64 = downsample_batch(all_frames_b64, max_total_frames_payload)
 
     # join transcripts into a single context block
     final_context = "\n\n".join(combined_transcripts) if combined_transcripts else None
