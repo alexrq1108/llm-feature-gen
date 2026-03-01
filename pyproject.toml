@@ -4,7 +4,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "LLM_feature_gen"
+name = "llm_feature_gen"
 version = "0.1.2"
 description = "Feature discovery and generation utilities"
 readme = "README.md"
