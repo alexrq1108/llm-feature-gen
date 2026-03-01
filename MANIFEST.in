@@ -1,5 +1,6 @@
 # Include package source and metadata
 recursive-include src *.py
+recursive-include src *.txt
 include pyproject.toml
 include README.md
 include LICENSE
