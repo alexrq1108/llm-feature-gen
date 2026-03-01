@@ -9,14 +9,17 @@ from dotenv import load_dotenv
 
 # OpenAI SDK (Azure)
 import openai
-from openai import AzureOpenAI
+from openai import OpenAI, AzureOpenAI
 
 load_dotenv()
 
 
 class OpenAIProvider:
     """
-    Thin adapter around Azure OpenAI for feature discovery/generation.
+    Thin adapter around  OpenAI (Azure or personal) for feature discovery/generation.
+        Supports:
+        - Azure OpenAI
+        - Personal / private OpenAI API
 
     - Reads credentials from .env:
         AZURE_OPENAI_API_KEY
@@ -30,6 +33,8 @@ class OpenAIProvider:
 
     - Returns a list of dicts (one per input item) in the usual case.
       If `as_set=True`, returns a list with a single dict corresponding to the joint call.
+
+    Provider is auto-detected from environment variables.
     """
 
     def __init__(
@@ -41,27 +46,81 @@ class OpenAIProvider:
         max_retries: int = 5,
         temperature: float = 0.0,
         max_tokens: int = 2048,
+        default_audio_model: Optional[str] = None,
     ) -> None:
-        self.api_key = api_key or os.getenv("AZURE_OPENAI_API_KEY")
-        self.api_version = api_version or os.getenv("AZURE_OPENAI_API_VERSION")
-        self.endpoint = endpoint or os.getenv("AZURE_OPENAI_ENDPOINT")
-        self.default_deployment = (
-            default_deployment_name or os.getenv("AZURE_OPENAI_GPT41_DEPLOYMENT_NAME")
+
+        # -------------------------------------------------
+        # detect whether we are using Azure or not
+        # -------------------------------------------------
+        self.is_azure = bool(
+            endpoint or os.getenv("AZURE_OPENAI_ENDPOINT")
         )
 
-        if not (self.api_key and self.api_version and self.endpoint):
-            raise EnvironmentError(
-                "Missing Azure OpenAI .env vars: AZURE_OPENAI_API_KEY, "
-                "AZURE_OPENAI_API_VERSION, AZURE_OPENAI_ENDPOINT"
+        # -------------------------------------------------
+        # AZURE OPENAI
+        # -------------------------------------------------
+        if self.is_azure:
+            self.api_key = api_key or os.getenv("AZURE_OPENAI_API_KEY")
+            self.api_version = api_version or os.getenv("AZURE_OPENAI_API_VERSION")
+            self.endpoint = endpoint or os.getenv("AZURE_OPENAI_ENDPOINT")
+
+            # renamed internally to default_model (deployment == model id)
+            self.default_model = (
+                    default_deployment_name
+                    or os.getenv("AZURE_OPENAI_GPT41_DEPLOYMENT_NAME")
             )
 
-        # AzureOpenAI client (new SDK style)
-        self.client: AzureOpenAI = openai.AzureOpenAI(
-            api_key=self.api_key,
-            api_version=self.api_version,
-            azure_endpoint=self.endpoint,
-        )
+            if not (self.api_key and self.api_version and self.endpoint):
+                raise EnvironmentError(
+                    "Missing Azure OpenAI .env vars: AZURE_OPENAI_API_KEY, "
+                    "AZURE_OPENAI_API_VERSION, AZURE_OPENAI_ENDPOINT"
+                )
 
+            # AzureOpenAI client (new SDK style)
+            self.client: AzureOpenAI = openai.AzureOpenAI(
+                api_key=self.api_key,
+                api_version=self.api_version,
+                azure_endpoint=self.endpoint,
+            )
+
+            self.audio_model = (
+                    default_audio_model
+                    or os.getenv("AZURE_OPENAI_WHISPER_DEPLOYMENT")
+            )
+
+            if not self.audio_model:
+                raise EnvironmentError(
+                    "Missing AZURE_OPENAI_WHISPER_DEPLOYMENT for Azure audio transcription."
+                )
+
+        # -------------------------------------------------
+        # PERSONAL / PRIVATE OPENAI
+        # -------------------------------------------------
+        else:
+            self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+            self.default_model = (
+                    default_deployment_name  # reuse same parameter
+                    or os.getenv("OPENAI_MODEL")
+            )
+
+            if not self.api_key:
+                raise EnvironmentError("Missing OPENAI_API_KEY")
+
+            if not self.default_model:
+                raise EnvironmentError("Missing OPENAI_MODEL")
+
+            # personal OpenAI client
+            self.client: OpenAI = OpenAI(api_key=self.api_key)
+
+            self.audio_model = (
+                    default_audio_model
+                    or os.getenv("OPENAI_AUDIO_MODEL")
+                    or "whisper-1"
+            )
+
+        # -------------------------------------------------
+        # Common configuration
+        # -------------------------------------------------
         self.max_retries = max_retries
         self.temperature = temperature
         self.max_tokens = max_tokens
@@ -71,15 +130,24 @@ class OpenAIProvider:
     # -----------------------
     def _chat_json(
         self,
-        deployment_name: str,
+        deployment_name: str, #  meaning: deployment (Azure) OR model (OpenAI)
         system_prompt: str,
         user_content: List[Dict[str, Any]],
+        json_mode: bool = False,
     ) -> Dict[str, Any]:
         """
         Sends a chat completion request and tries to parse JSON from the reply.
         Falls back to {"features": "..."} if parsing fails.
         Retries on RateLimitError with exponential backoff.
         """
+
+        if json_mode and "JSON" not in system_prompt:
+            system_prompt += " Respond in strict JSON format."
+
+        kwargs = {}
+        if json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
+
         backoff = 2
         for attempt in range(self.max_retries):
             try:
@@ -91,6 +159,7 @@ class OpenAIProvider:
                     ],
                     temperature=self.temperature,
                     max_tokens=self.max_tokens,
+                    **kwargs,
                 )
                 text = resp.choices[0].message.content
                 try:
@@ -129,7 +198,7 @@ class OpenAIProvider:
 
         `feature_gen=True` can be used to enforce a strict JSON schema prompt on the system side.
         """
-        deployment = deployment_name or self.default_deployment
+        deployment = deployment_name or self.default_model
 
         # fallback/default prompt
         base_prompt = prompt or "Extract meaningful features from this image for tabular dataset construction."
@@ -143,19 +212,19 @@ class OpenAIProvider:
             )
 
         def build_content(txt_prompt, b64_imgs, context_txt=None):
-            content = [{"type": "text", "text": txt_prompt}]
-
-            if context_txt:
-                content.append({
-                    "type": "text",
-                    "text": f"\n\nADDITIONAL CONTEXT (AUDIO TRANSCRIPT):\n{context_txt}\n\nAnalyze the visual frames below taking the transcript into account:"
-                })
-
+            # Put images first for better compatibility with VLM models
+            content = []
             for img_b64 in b64_imgs:
                 content.append({
                     "type": "image_url",
                     "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}
                 })
+
+            final_text = txt_prompt
+            if context_txt:
+                final_text += f"\n\nADDITIONAL CONTEXT (AUDIO TRANSCRIPT):\n{context_txt}\n\nAnalyze the visual frames below taking the transcript into account:"
+
+            content.append({"type": "text", "text": final_text})
             return content
 
         # ----------------------------
@@ -164,13 +233,13 @@ class OpenAIProvider:
         if as_set or extra_context:
             # one message with many images
             user_content = build_content(base_prompt, image_base64_list, extra_context)
-            out = self._chat_json(deployment, system_prompt, user_content)
+            out = self._chat_json(deployment, system_prompt, user_content, json_mode=True)
             return [out]
 
         results: List[Dict[str, Any]] = []
         for img_b64 in image_base64_list:
             user_content = build_content(base_prompt, [img_b64], None)
-            out = self._chat_json(deployment, system_prompt, user_content)
+            out = self._chat_json(deployment, system_prompt, user_content, json_mode=True)
             results.append(out)
 
         return results
@@ -188,7 +257,7 @@ class OpenAIProvider:
         is appended (preserving your colleagues’ behavior).
         """
         results: List[Dict[str, Any]] = []
-        deployment = deployment_name or self.default_deployment
+        deployment = deployment_name or self.default_model
 
         # base prompt if none provided
         base_prompt = prompt or "Extract meaningful features from this text for tabular dataset construction."
@@ -213,7 +282,31 @@ class OpenAIProvider:
 
         for txt in text_list:
             user_content: List[Dict[str, Any]] = [{"type": "text", "text": txt}]
-            out = self._chat_json(deployment, system_prompt, user_content)
+            out = self._chat_json(deployment, system_prompt, user_content, json_mode=True)
             results.append(out)
 
         return results
+
+    def transcribe_audio(self, audio_path: str) -> str:
+        """
+        Transcribes audio file using OpenAI Whisper (Cloud).
+        """
+
+        if not os.path.exists(audio_path):
+            return f"(Error: Audio file not found at {audio_path})"
+
+        try:
+            with open(audio_path, "rb") as audio_file:
+                transcript = self.client.audio.transcriptions.create(
+                    model=self.audio_model,
+                    file=audio_file,
+                )
+
+            return transcript.text
+
+        except openai.RateLimitError:
+            return "(Transcription Error: Rate limit exceeded.)"
+
+        except Exception as e:
+            return f"(Transcription Error: {str(e)})"
+
