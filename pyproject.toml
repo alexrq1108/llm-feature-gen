@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "llm_feature_gen"
-version = "0.1.4"
+version = "0.1.5"
 description = "Feature discovery and generation utilities"
 readme = "README.md"
 requires-python = ">=3.9"
