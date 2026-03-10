@@ -325,7 +325,7 @@ def assign_feature_values_from_folder(
 
                     for feat in feature_names:
                         value = inner.get(feat, "not given by LLM")
-                        row_dict[feat] = f"{feat} = {value}"
+                        row_dict[feat] = value
 
                     df_out = pd.DataFrame([row_dict], columns=all_columns)
                     df_out.to_csv(csv_path, mode="a", header=False, index=False)
