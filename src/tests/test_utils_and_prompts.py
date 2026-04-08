@@ -91,6 +91,10 @@ def test_video_utils_signature_and_downsample(monkeypatch: pytest.MonkeyPatch):
     assert video_mod.downsample_batch(["not-base64", "still-bad"], target_count=1) == ["not-base64"]
 
     images = [make_b64_image(i * 20) for i in range(4)]
+    monkeypatch.setattr(video_mod.cv2, "kmeans", lambda data, K, *args: (None, np.array([[0], [1], [2], [2]]), None))
+    distinct = video_mod.downsample_batch(images, target_count=3)
+    assert len(distinct) == 3
+
     monkeypatch.setattr(video_mod.cv2, "kmeans", lambda data, K, *args: (None, np.array([[0], [0], [0], [0]]), None))
     chosen = video_mod.downsample_batch(images, target_count=3)
     assert len(chosen) == 3

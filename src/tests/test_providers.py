@@ -111,6 +111,10 @@ def test_openai_provider_chat_and_public_methods(monkeypatch: pytest.MonkeyPatch
     provider.client = client
     assert provider._chat_json("m", "system", [{"type": "text", "text": "u"}]) == {"error": "boom"}
 
+    provider.max_retries = 0
+    provider.client = make_chat_client(['{"unused": true}'])[0]
+    assert provider._chat_json("m", "system", [{"type": "text", "text": "u"}], json_mode=True) is None
+
     captured = []
     provider._chat_json = lambda deployment, system_prompt, user_content, json_mode=False: captured.append(
         {
@@ -131,6 +135,12 @@ def test_openai_provider_chat_and_public_methods(monkeypatch: pytest.MonkeyPatch
     captured.clear()
     assert provider.text_features(["hello"], prompt="prompt", feature_gen=True) == [{"features": "x"}]
     assert "structured JSON" in captured[0]["system_prompt"]
+    captured.clear()
+    assert provider.text_features(["hello"], feature_gen=True) == [{"features": "x"}]
+    assert "tabular dataset construction" not in captured[0]["system_prompt"]
+    captured.clear()
+    assert provider.text_features(["hello"], prompt="plain", feature_gen=False) == [{"features": "x"}]
+    assert captured[0]["system_prompt"] == "plain"
 
     missing = provider.transcribe_audio(str(tmp_path / "missing.wav"))
     assert "not found" in missing
@@ -241,6 +251,8 @@ def test_local_provider_public_methods_and_transcription(monkeypatch: pytest.Mon
 
     assert provider.text_features(["hello"], prompt="prompt", feature_gen=True) == [{"features": "x"}]
     assert captured[-1]["deployment"] == "txt-model"
+    assert provider.text_features(["hello"], feature_gen=True) == [{"features": "x"}]
+    assert provider.text_features(["hello"], prompt="plain", feature_gen=False) == [{"features": "x"}]
 
     monkeypatch.setattr(local_mod, "HAS_LOCAL_WHISPER", False)
     assert "not installed" in provider.transcribe_audio("audio.wav")

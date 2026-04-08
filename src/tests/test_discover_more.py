@@ -48,6 +48,7 @@ def test_discover_texts_from_file_and_directory(tmp_path: Path, monkeypatch: pyt
     folder.mkdir()
     (folder / "a.txt").write_text("a", encoding="utf-8")
     (folder / "b.bin").write_text("b", encoding="utf-8")
+    (folder / "nested").mkdir()
 
     def fake_extract(path: Path):
         if path.suffix == ".bin":
@@ -58,6 +59,18 @@ def test_discover_texts_from_file_and_directory(tmp_path: Path, monkeypatch: pyt
     result = discover_mod.discover_features_from_texts(folder, provider=provider, as_set=False, output_dir=tmp_path / "out2")
     assert isinstance(result, list)
     assert provider.calls[-1]["texts"] == ["a"]
+
+    custom_file = tmp_path / "custom.txt"
+    custom_file.write_text("x", encoding="utf-8")
+    monkeypatch.setattr(discover_mod, "extract_text_from_file", lambda path: ["single"])
+    discover_mod.discover_features_from_texts(
+        custom_file,
+        provider=provider,
+        as_set=True,
+        output_dir=tmp_path / "out3",
+        output_filename="custom_text.json",
+    )
+    assert (tmp_path / "out3" / "custom_text.json").exists()
 
 
 def test_discover_texts_error_paths_and_invalid_special_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -159,6 +172,22 @@ def test_discover_images_single_file_and_video_edge_branches(tmp_path: Path, mon
     assert isinstance(result, list)
     assert list_provider.calls[0]["images"] == ["x"]
 
+    short_provider = ImageProvider()
+
+    def short_transcribe(_path: str) -> str:
+        return "short"
+
+    short_provider.transcribe_audio = short_transcribe  # type: ignore[attr-defined]
+    monkeypatch.setattr(discover_mod, "extract_key_frames", lambda path, frame_limit=5: ["x"])
+    monkeypatch.setattr(discover_mod, "extract_audio_track", lambda path: str(audio_path))
+    discover_mod.discover_features_from_videos(
+        str(video_dir / "good1.mp4"),
+        provider=short_provider,
+        output_dir=tmp_path / "vidout3",
+        output_filename="custom_video.json",
+    )
+    assert (tmp_path / "vidout3" / "custom_video.json").exists()
+
 
 def test_discover_videos_warns_when_provider_has_no_transcriber(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     provider = ImageProvider()
@@ -218,6 +247,20 @@ def test_discover_tabular_supports_multiple_formats_and_validation(tmp_path: Pat
     assert captured["output_filename"] == "discovered_tabular_features.json"
     assert calls == [("csv", ","), ("csv", ";")]
 
+    subdir = folder / "subdir"
+    subdir.mkdir()
+    monkeypatch.setattr(pd, "read_csv", lambda path, sep=",": pd.DataFrame({"text": ["kept"]}))
+    result = discover_mod.discover_features_from_tabular(
+        file_or_folder=folder,
+        text_column="text",
+        provider=TextProvider(),
+    )
+    assert result == {"ok": True}
+    assert captured["texts"] == ["kept", "x1", "p1", "j1"]
+
+    with pytest.raises(FileNotFoundError):
+        discover_mod.discover_features_from_tabular(tmp_path / "missing.csv", text_column="text", provider=TextProvider())
+
     single = tmp_path / "single.csv"
     single.write_text("placeholder", encoding="utf-8")
     monkeypatch.setattr(pd, "read_csv", lambda path, sep=",": pd.DataFrame({"other": ["x"]}))
@@ -230,5 +273,22 @@ def test_discover_tabular_supports_multiple_formats_and_validation(tmp_path: Pat
     with pytest.raises(ValueError):
         discover_mod.discover_features_from_tabular(bad, text_column="text", provider=TextProvider())
 
-    with pytest.raises(FileNotFoundError):
-        discover_mod.discover_features_from_tabular(tmp_path / "missing.csv", text_column="text", provider=TextProvider())
+    class FakePath:
+        def __init__(self, raw):
+            self.raw = raw
+
+        def exists(self):
+            return True
+
+        def is_file(self):
+            return False
+
+        def is_dir(self):
+            return False
+
+        def __str__(self):
+            return self.raw
+
+    monkeypatch.setattr(discover_mod, "Path", FakePath)
+    with pytest.raises(ValueError):
+        discover_mod.discover_features_from_tabular("odd", text_column="text", provider=TextProvider())

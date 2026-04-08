@@ -38,6 +38,7 @@ branch = true
 source = ["llm_feature_gen"]
 
 [tool.coverage.report]
+fail_under = 100
 show_missing = true
 skip_empty = true
 

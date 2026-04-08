@@ -112,6 +112,11 @@ def test_prepare_video_inputs_handles_audio_and_missing_frames(tmp_path: Path, m
     assert frames == []
     assert transcript is None
 
+    monkeypatch.setattr(gen, "extract_key_frames", lambda path, frame_limit=6: ["frame3"])
+    frames, transcript = gen._prepare_video_inputs(tmp_path / "video.mp4", use_audio=False, provider=provider)
+    assert frames == ["frame3"]
+    assert transcript is None
+
 
 def test_prepare_image_inputs_and_helper_functions(tmp_path: Path):
     img_path = tmp_path / "img.png"
@@ -127,11 +132,15 @@ def test_prepare_image_inputs_and_helper_functions(tmp_path: Path):
     discovered_path.write_text(json.dumps([{"feature": "feat1"}]), encoding="utf-8")
     assert gen.load_discovered_features(discovered_path) == {"proposed_features": [{"feature": "feat1"}]}
 
+    discovered_path.write_text(json.dumps({"proposed_features": [{"feature": "feat1"}]}), encoding="utf-8")
+    assert gen.load_discovered_features(discovered_path) == {"proposed_features": [{"feature": "feat1"}]}
+
     with pytest.raises(FileNotFoundError):
         gen.load_discovered_features(tmp_path / "missing.json")
 
     assert gen.parse_json_from_markdown("") == {}
     assert gen.parse_json_from_markdown("```json\n{\"x\": 1}\n```") == {"x": 1}
+    assert gen.parse_json_from_markdown("```json\n{\"x\": 1}") == {"x": 1}
     assert gen.parse_json_from_markdown("not json") == {}
 
     prompt = gen._build_prompt_for_generation("Base", {"proposed_features": [{"feature": "f"}]})
@@ -171,6 +180,17 @@ def test_assign_feature_values_from_folder_for_tabular_rows(tmp_path: Path, monk
     assert list(df["Class"]) == ["L1"]
     assert list(df["feat1"]) == ["row-value"]
     assert list(df["feat2"]) == ["not given by LLM"]
+
+    csv_path = gen.assign_feature_values_from_folder(
+        folder_path=root,
+        class_name="classA",
+        discovered_features={"proposed_features": [{"feature": "feat1"}, {"feature": "feat2"}]},
+        provider=provider,
+        output_dir=tmp_path / "out",
+        text_column="text",
+        label_column="label",
+    )
+    assert csv_path.exists()
 
 
 def test_assign_feature_values_from_folder_for_modalities_and_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -273,6 +293,43 @@ def test_assign_feature_values_from_folder_covers_remaining_branches(tmp_path: P
     df = pd.read_csv(csv_path)
     assert list(df["feat1"]) == ["from-string", "from-string"]
 
+    class DictProvider(FakeProvider):
+        def text_features(self, text_list, prompt=None):
+            return [{"features": {"feat1": "direct"}}]
+
+    csv_path = gen.assign_feature_values_from_folder(
+        folder_path=root,
+        class_name="classD",
+        discovered_features={"proposed_features": [{"feature": "feat1"}]},
+        provider=DictProvider(),
+        output_dir=tmp_path / "out_direct",
+        text_column="text",
+    )
+    df = pd.read_csv(csv_path)
+    assert "direct" in df["feat1"].tolist()
+
+
+def test_assign_feature_values_from_folder_text_only_branch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    root = tmp_path / "root"
+    class_dir = root / "classText"
+    class_dir.mkdir(parents=True)
+    (class_dir / "note.txt").write_text("body", encoding="utf-8")
+
+    monkeypatch.setattr(gen, "_prepare_text_inputs", lambda path: ["chunk one", "chunk two"])
+    monkeypatch.setattr(gen, "tqdm", None)
+
+    provider = FakeProvider()
+    csv_path = gen.assign_feature_values_from_folder(
+        folder_path=root,
+        class_name="classText",
+        discovered_features={"proposed_features": [{"feature": "feat1"}]},
+        provider=provider,
+        output_dir=tmp_path / "out",
+    )
+    df = pd.read_csv(csv_path)
+    assert list(df["File"]) == ["note.txt"]
+    assert provider.text_calls[0]["texts"] == ["chunk one\n\n---\n\nchunk two"]
+
 
 def test_assign_feature_values_from_folder_unreachable_else_via_pathlike(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     root = tmp_path / "root"
@@ -342,6 +399,15 @@ def test_generate_features_and_wrappers(tmp_path: Path, monkeypatch: pytest.Monk
     assert Path(result["__merged__"]).exists()
     assert generated["c1"]["text_column"] == "body"
 
+    result = gen.generate_features(
+        root_folder=root,
+        discovered_features_path=tmp_path / "features.json",
+        output_dir=output_dir,
+        classes=["c1"],
+        merge_to_single_csv=False,
+    )
+    assert set(result) == {"c1"}
+
     captured = []
 
     def fake_generate(*args, **kwargs):
@@ -353,11 +419,19 @@ def test_generate_features_and_wrappers(tmp_path: Path, monkeypatch: pytest.Monk
     assert gen.generate_features_from_texts(root_folder=root) == {"ok": "1"}
     assert gen.generate_features_from_images(root_folder=root) == {"ok": "1"}
     assert gen.generate_features_from_videos(root_folder=root) == {"ok": "1"}
+    assert gen.generate_features_from_tabular(root_folder=root, discovered_features_path="custom_tab.json") == {"ok": "1"}
+    assert gen.generate_features_from_texts(root_folder=root, discovered_features_path="custom_text.json") == {"ok": "1"}
+    assert gen.generate_features_from_images(root_folder=root, discovered_features_path="custom_image.json") == {"ok": "1"}
+    assert gen.generate_features_from_videos(root_folder=root, discovered_features_path="custom_video.json", use_audio=False) == {"ok": "1"}
     assert captured == [
         "outputs/discovered_tabular_features.json",
         "outputs/discovered_text_features.json",
         "outputs/discovered_image_features.json",
         "outputs/discovered_videos_features.json",
+        "custom_tab.json",
+        "custom_text.json",
+        "custom_image.json",
+        "custom_video.json",
     ]
 
 
