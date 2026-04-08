@@ -6,7 +6,9 @@ on:
 
 jobs:
   pytest:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
     env:
       PYTHONPATH: src
     strategy:
@@ -16,16 +18,17 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
+          pip-install: false
 
       - name: Upgrade packaging tools
-        run: python -m pip install --upgrade pip setuptools wheel
+        run: python -m pip install --upgrade setuptools wheel
 
       - name: Install package and dev dependencies
         run: python -m pip install -e ".[dev]"
