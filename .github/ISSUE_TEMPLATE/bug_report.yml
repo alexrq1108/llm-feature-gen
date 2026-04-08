@@ -1,0 +1,87 @@
+name: Bug report
+description: Report a reproducible problem with llm-feature-gen
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Briefly describe the problem.
+      placeholder: A short summary of the issue.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps_to_reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Share the smallest set of steps needed to reproduce the issue.
+      placeholder: |
+        1. Install ...
+        2. Run ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual_behavior
+    attributes:
+      label: Actual behavior
+      description: What happened instead?
+    validations:
+      required: true
+
+  - type: input
+    id: package_version
+    attributes:
+      label: Package version
+      description: Which version of `llm-feature-gen` are you using?
+      placeholder: 0.1.8
+    validations:
+      required: true
+
+  - type: input
+    id: python_version
+    attributes:
+      label: Python version
+      description: Output of `python --version`
+      placeholder: Python 3.11.9
+    validations:
+      required: true
+
+  - type: input
+    id: os_environment
+    attributes:
+      label: OS / environment
+      description: Operating system, container/runtime details, or notebook environment.
+      placeholder: macOS 14.7, Ubuntu 24.04, GitHub Actions, Jupyter, etc.
+    validations:
+      required: true
+
+  - type: textarea
+    id: provider_configuration
+    attributes:
+      label: Provider configuration
+      description: Describe the provider setup without sharing secrets.
+      placeholder: OpenAI vs Azure OpenAI, model/deployment names, relevant config flags, redacted env var names.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs_traceback
+    attributes:
+      label: Logs or traceback
+      description: Paste any relevant logs, stack traces, or error messages. Remove secrets before posting.
+      render: shell
+    validations:
+      required: false

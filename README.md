@@ -280,3 +280,11 @@ pytest src/tests/test_discovery.py
 ```
 
 Tests use fake providers and temporary directories, so they do not require OpenAI or Azure credentials.
+
+## Contributing and Documentation
+
+If you want to contribute or need project maintenance details, start here:
+
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) for local setup, test workflow, pull request expectations, and issue-reporting guidance
+- [`CHANGELOG.md`](CHANGELOG.md) for user-visible changes and the current release history
+- GitHub issue templates under `.github/ISSUE_TEMPLATE/` for bug reports and feature requests
