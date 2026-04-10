@@ -1,6 +1,9 @@
 # LLM Feature Gen
 
-[![codecov](https://codecov.io/gh/JuliaYershova/LLM-feature-gen/graph/badge.svg?token=BHLNPPOZUH)](https://codecov.io/gh/JuliaYershova/LLM-feature-gen)
+[![PyPI version](https://img.shields.io/pypi/v/llm-feature-gen)](https://pypi.org/project/llm-feature-gen/)
+[![Tests](https://github.com/JuliaYershova/LLM-feature-gen/actions/workflows/tests.yml/badge.svg)](https://github.com/JuliaYershova/LLM-feature-gen/actions/workflows/tests.yml)
+[![Docs](https://github.com/JuliaYershova/LLM-feature-gen/actions/workflows/docs.yml/badge.svg)](https://juliayershova.github.io/llm-feature-gen/)
+[![Codecov](https://codecov.io/gh/JuliaYershova/LLM-feature-gen/graph/badge.svg?token=BHLNPPOZUH)](https://codecov.io/gh/JuliaYershova/LLM-feature-gen)
 
 **LLM Feature Gen** is a Python library for discovering and generating interpretable features from unstructured data with large language models.
 
@@ -30,8 +33,10 @@ OPENAI_AUDIO_MODEL=whisper-1
 python3 - <<'PY'
 from pathlib import Path
 
-from llm_feature_gen.discover import discover_features_from_texts
-from llm_feature_gen.generate import generate_features_from_texts
+from llm_feature_gen import (
+    discover_features_from_texts,
+    generate_features_from_texts,
+)
 
 samples = {
     "demo_discover_texts/sample1.txt": "The dish was rich, spicy, and served in a deep bowl.",
